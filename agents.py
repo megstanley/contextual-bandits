@@ -41,9 +41,6 @@ class StandardAgent:
         for step in range(n_steps):
             lever = self.choose_lever()
 
-            # Update the array keeping track of how many times each lever has been pulled
-            self.pull_record[lever] += 1
-
             # update whether lever was best
             if lever == self.bandit.best_arm:
                 self.num_optimal_pulls += 1
@@ -86,6 +83,9 @@ class eGreedyAgent(StandardAgent):
         # self.Q_values = Q_values(reward, lever)
         self.Q_trajectory.append(self.estimatedQ)
 
+        # Update the array keeping track of how many times each lever has been pulled
+        self.pull_record[lever] += 1
+
         return lever
 
     @property
@@ -95,8 +95,108 @@ class eGreedyAgent(StandardAgent):
 
 
 class UCBAgent(StandardAgent):
-    def __init__(self, bandit):
+    def __init__(self, bandit, delta=0.01):
         super(UCBAgent, self).__init__(bandit)
 
-        self.estimatedQ = [0] * self.bandit.k
+        self.delta = delta
+
+        self.estimatedQ = [
+            self.bandit.pull_lever(k) for k in range(0, self.bandit.k)
+        ]  # initialise with single pull
         self.Q_trajectory = []
+
+        self.reward = 0
+
+        # must introduce a new, child-specific, concept: the UCB
+        # UCB initialised as Q with upper bounds
+        self.UCB_values = [
+            self.estimatedQ[k] + math.sqrt((2 * math.log(1 / self.delta)))
+            for k in range(0, self.bandit.k)
+        ]
+
+    def choose_lever(self):
+
+        # pick the lever with the highest UCB
+        lever = np.argmax(self.UCB_values)
+
+        # get the reward from the bandit that corresponds to this
+        self.reward = self.bandit.pull_lever(lever)
+
+        self.pull_record[lever] += 1
+
+        # update the UCB for the pulled lever, so that correct UCB's used in next round.
+        self.update_UCB(lever)
+
+        self.estimatedQ[lever] += (1 / (self.pull_record[lever] + 1)) * (
+            self.reward - self.estimatedQ[lever]
+        )
+
+        # Update the array keeping track of how many times each lever has been pulled
+        self.pull_record[lever] += 1
+
+        # self.Q_values = Q_values(reward, lever)
+        self.Q_trajectory.append(self.estimatedQ)
+
+        return lever
+
+    def update_UCB(self, lever):
+        # make a calculation of the UCB for the updated lever according to the standard definition
+
+        for l in range(0, self.bandit.k):
+            if self.pull_record[l] != 0:
+                self.UCB_values[l] = self.estimatedQ[l] + math.sqrt(
+                    (2 * math.log(1 / self.delta)) / (self.pull_record[l] + 1)
+                )
+            else:
+                pass
+
+    @property
+    def Q_values(self):
+        # print('getting Q_values')
+        return self.estimatedQ
+
+
+class explorecommitAgent(StandardAgent):
+    def __init__(self, bandit, m=100):
+        super(explorecommitAgent, self).__init__(bandit)
+
+        self.m = m
+        self.tau = 0
+
+        self.estimatedQ = [0] * self.bandit.k  # initialise as zero
+        self.Q_trajectory = []
+
+        self.reward = 0
+
+    def choose_lever(self):
+
+        # sample all levers m times and then start with greedy useage.
+        if self.tau < self.bandit.k * self.m:
+            # choose first 'non-complete' lever
+            compare = np.array(self.pull_record) < self.m
+            lever = np.where(compare == True)[0][0]
+            print(self.tau)
+            print(self.bandit.k * self.m)
+            self.tau += 1
+        else:
+            lever = np.argmax(self.Q_values)
+
+        # get the reward from the bandit that corresponds to this
+        self.reward = self.bandit.pull_lever(lever)
+
+        self.estimatedQ[lever] += (1 / (self.pull_record[lever] + 1)) * (
+            self.reward - self.estimatedQ[lever]
+        )
+
+        # self.Q_values = Q_values(reward, lever)
+        self.Q_trajectory.append(self.estimatedQ)
+
+        # Update the array keeping track of how many times each lever has been pulled
+        self.pull_record[lever] += 1
+
+        return lever
+
+    @property
+    def Q_values(self):
+        # print('getting Q_values')
+        return self.estimatedQ
