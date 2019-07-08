@@ -39,7 +39,11 @@ class StandardAgent:
 
     def run_trial(self, n_steps):
         for step in range(n_steps):
+
             lever = self.choose_lever()
+
+            # Update the array keeping track of how many times each lever has been pulled
+            self.pull_record[lever] += 1
 
             # update whether lever was best
             if lever == self.bandit.best_arm:
@@ -94,7 +98,7 @@ class eGreedyAgent(StandardAgent):
         return self.estimatedQ
 
 
-class UCBAgent(StandardAgent):
+class UCB1Agent(StandardAgent):
     def __init__(self, bandit, delta=0.01):
         super(UCBAgent, self).__init__(bandit)
 
